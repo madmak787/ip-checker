@@ -15,14 +15,16 @@ $requested = isset($_GET['ip']) ? trim((string) $_GET['ip']) : '';
 $isSelf = isset($_GET['self']) && (string) $_GET['self'] === '1';
 $isOwnLookup = $requested === '' || $isSelf;
 $rawTarget = $requested === '' ? $clientIp : $requested;
-$targetIp = geo_normalize_ip($rawTarget);
+$resolved = geo_resolve_target($rawTarget);
+$targetIp = $resolved['ok'] ? $resolved['ip'] : null;
+$resolvedFrom = $resolved['ok'] ? ($resolved['resolved_from'] ?? null) : null;
 $detectIpv4 = $requested === '' && $targetIp !== null && !geo_is_ipv4($targetIp);
 
 $inputError = null;
 $result = null;
 
-if ($targetIp === null) {
-    $inputError = 'Enter a valid IPv4 or IPv6 address.';
+if (!$resolved['ok']) {
+    $inputError = $resolved['message'] ?? 'Enter a valid IPv4, IPv6, or hostname.';
 } else {
     $result = geo_lookup($targetIp);
 }
@@ -31,8 +33,15 @@ $ok = is_array($result) && !empty($result['ok']);
 $hasMap = $ok && $result['latitude'] !== null && $result['longitude'] !== null;
 $displayIp = $ok ? $result['ip'] : ($targetIp ?? $rawTarget);
 $queryIp = ($isOwnLookup ? $displayIp : $targetIp) ?: $clientIp;
+$publicBase = geo_public_base();
+$shareQuery = '?ip=' . rawurlencode((string) $queryIp);
+$shareUrl = $publicBase . '/' . $shareQuery;
+$badgeUrl = $publicBase . '/badge.php?ip=' . rawurlencode((string) $queryIp);
+$embedSnippet = '<iframe src="' . $badgeUrl . '" width="340" height="112" loading="lazy" style="border:0;border-radius:10px;overflow:hidden" title="IP Checker"></iframe>';
 $basicApi = 'api/?ip=' . rawurlencode((string) $queryIp);
 $detailedApi = 'api/detailed/?ip=' . rawurlencode((string) $queryIp);
+$curlBasic = 'curl -sS "' . $publicBase . '/api/?ip=' . rawurlencode((string) $queryIp) . '"';
+$curlHost = 'curl -sS "' . $publicBase . '/api/?ip=google.com"';
 
 $placeParts = $ok ? array_values(array_filter([
     $result['city'],
@@ -56,10 +65,29 @@ $mapPayload = [
 ];
 
 $showIpv6 = $isOwnLookup && $clientIpv6 && $clientIpv6 !== $displayIp;
+$hintKind = $ok ? ($result['connection_kind'] ?? 'unknown') : 'unknown';
+$hintLabel = $ok ? ($result['connection_hint'] ?? '') : '';
+
+$kicker = 'Looked up IP';
+if ($resolvedFrom) {
+    $kicker = 'Resolved ' . $resolvedFrom;
+} elseif ($isOwnLookup) {
+    $kicker = ($targetIp && geo_is_ipv4($targetIp)) ? 'Your IPv4' : 'Your IP';
+}
 
 $fieldRows = [];
 if ($ok) {
+    $asnLabel = null;
+    if (!empty($result['asn'])) {
+        $asnLabel = 'AS' . $result['asn'];
+        if (!empty($result['asn_org'])) {
+            $asnLabel .= ' · ' . $result['asn_org'];
+        }
+    } elseif (!empty($result['asn_org'])) {
+        $asnLabel = $result['asn_org'];
+    }
     $candidates = [
+        ['Hostname', $result['hostname'] ?? null],
         ['City', $result['city']],
         ['Region', $result['region']],
         ['Country', $result['country'] ? $result['country'] . ($result['country_code'] ? ' (' . $result['country_code'] . ')' : '') : null],
@@ -68,9 +96,10 @@ if ($ok) {
         ['Timezone', $result['timezone']],
         ['Coordinates', $hasMap ? $result['latitude'] . ', ' . $result['longitude'] : null],
         ['Accuracy', $result['accuracy_radius_km'] ? '± ' . $result['accuracy_radius_km'] . ' km' : null],
-        ['Sources', !empty($result['sources']) ? implode(', ', $result['sources']) : null],
+        ['ASN', $asnLabel],
         ['ISP', $result['isp'] ?? null],
         ['Network', $result['network']],
+        ['Sources', !empty($result['sources']) ? implode(', ', $result['sources']) : null],
     ];
     foreach ($candidates as $row) {
         if ($row[1] !== null && $row[1] !== '') {
@@ -85,7 +114,7 @@ if ($ok) {
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>IP Checker</title>
-		<meta name="description" content="Look up location, timezone, and network details for any IP address." />
+		<meta name="description" content="Look up location, ASN, hostname, and network hints for any IP or domain." />
 		<link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
 		<link rel="stylesheet" href="assets/css/leaflet.css"/>
 		<link rel="stylesheet" href="assets/css/app.css" />
@@ -123,17 +152,17 @@ if ($ok) {
 		<main class="wrap">
 			<section class="hero">
 				<h1>Look up any IP address</h1>
-				<p>City, country, coordinates, timezone, and network range. Share the result URL or call the JSON API.</p>
+				<p>City, ASN, reverse DNS, and a simple hosting or VPN hint. Share the result or embed a badge.</p>
 				<form class="search" method="get" action="index.php">
-					<label class="sr-only" for="ip">IP address</label>
+					<label class="sr-only" for="ip">IP address or hostname</label>
 					<input
 						id="ip"
 						name="ip"
 						type="text"
-						inputmode="decimal"
+						inputmode="text"
 						autocomplete="off"
 						spellcheck="false"
-						placeholder="8.8.8.8 or 2001:4860:4860::8888"
+						placeholder="8.8.8.8, 2001:4860:4860::8888, or google.com"
 						value="<?php echo h($isOwnLookup ? '' : $requested); ?>"
 					/>
 					<button type="submit" class="btn btn-primary">Lookup</button>
@@ -154,40 +183,38 @@ if ($ok) {
 				</div>
 			<?php else: ?>
 				<section class="results">
-					<div class="panel facts">
-						<p class="kicker"><?php
-							if (!$isOwnLookup) {
-								echo 'Looked up IP';
-							} elseif ($targetIp && geo_is_ipv4($targetIp)) {
-								echo 'Your IPv4';
-							} else {
-								echo 'Your IP';
-							}
-						?></p>
-						<div class="ip-row">
-							<h2 id="display-ip"><?php echo h($displayIp); ?></h2>
-							<button type="button" class="btn btn-primary btn-small copy-ip" data-copy="<?php echo h($displayIp); ?>">Copy</button>
-						</div>
-						<?php if ($place !== ''): ?>
-							<p class="place"><?php echo h($place); ?></p>
-						<?php endif; ?>
-						<dl class="rows">
-							<?php foreach ($fieldRows as $row): ?>
-								<div class="row">
-									<dt><?php echo h($row[0]); ?></dt>
-									<dd<?php echo $row[0] === 'Coordinates' ? ' id="field-coordinates"' : ($row[0] === 'Accuracy' ? ' id="field-accuracy"' : ''); ?>><?php echo h($row[1]); ?></dd>
-								</div>
-							<?php endforeach; ?>
-							<?php if ($showIpv6): ?>
-								<div class="row">
-									<dt>IPv6</dt>
-									<dd class="value-with-copy">
-										<span><?php echo h($clientIpv6); ?></span>
-										<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($clientIpv6); ?>">Copy</button>
-									</dd>
-								</div>
+					<div class="facts-stack">
+						<div class="panel facts">
+							<p class="kicker"><?php echo h($kicker); ?></p>
+							<div class="ip-row">
+								<h2 id="display-ip"><?php echo h($displayIp); ?></h2>
+								<button type="button" class="btn btn-primary btn-small copy-ip" data-copy="<?php echo h($displayIp); ?>">Copy</button>
+							</div>
+							<?php if ($hintLabel !== ''): ?>
+								<p class="hint hint-<?php echo h($hintKind); ?>"><?php echo h($hintLabel); ?></p>
 							<?php endif; ?>
-						</dl>
+							<?php if ($place !== ''): ?>
+								<p class="place"><?php echo h($place); ?></p>
+							<?php endif; ?>
+							<dl class="rows">
+								<?php foreach ($fieldRows as $row): ?>
+									<div class="row">
+										<dt><?php echo h($row[0]); ?></dt>
+										<dd<?php echo $row[0] === 'Coordinates' ? ' id="field-coordinates"' : ($row[0] === 'Accuracy' ? ' id="field-accuracy"' : ''); ?>><?php echo h($row[1]); ?></dd>
+									</div>
+								<?php endforeach; ?>
+							</dl>
+						</div>
+						<?php if ($showIpv6): ?>
+							<div class="panel facts compact">
+								<p class="kicker">Your IPv6</p>
+								<div class="ip-row">
+									<h2><?php echo h($clientIpv6); ?></h2>
+									<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($clientIpv6); ?>">Copy</button>
+									<a class="btn btn-primary btn-small" href="index.php?ip=<?php echo h(rawurlencode($clientIpv6)); ?>">Lookup</a>
+								</div>
+							</div>
+						<?php endif; ?>
 					</div>
 					<div class="panel map-card">
 						<?php if ($showMap): ?>
@@ -202,21 +229,49 @@ if ($ok) {
 				</section>
 			<?php endif; ?>
 
+			<?php if ($ok): ?>
+			<section class="panel share">
+				<h2>Share / embed</h2>
+				<p>Copy a permalink to this lookup, or drop a compact badge on a blog.</p>
+				<div class="share-grid">
+					<div class="api-item">
+						<h3>Share URL</h3>
+						<pre><?php echo h($shareUrl); ?></pre>
+						<div class="api-actions">
+							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($shareUrl); ?>">Copy link</button>
+							<a class="btn btn-primary btn-small" href="<?php echo h($shareQuery); ?>">Open</a>
+						</div>
+					</div>
+					<div class="api-item">
+						<h3>This IP badge</h3>
+						<pre><?php echo h($embedSnippet); ?></pre>
+						<div class="api-actions">
+							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($embedSnippet); ?>">Copy embed</button>
+							<a class="btn btn-primary btn-small" href="<?php echo h($badgeUrl); ?>" target="_blank" rel="noopener noreferrer">Preview</a>
+						</div>
+					</div>
+				</div>
+			</section>
+			<?php endif; ?>
+
 			<section class="panel api">
 				<h2>JSON API</h2>
-				<p>GET either endpoint. Omit <code>ip</code> to look up the caller.</p>
+				<p>GET either endpoint with <code>ip</code> as an address or hostname. Omit <code>ip</code> to look up the caller. CORS is open (<code>Access-Control-Allow-Origin: *</code>). Lookups are cached on the server for 24 hours; API responses send <code>Cache-Control: no-store</code>.</p>
 				<div class="api-grid">
 					<div class="api-item">
 						<h3>Basic</h3>
 						<pre>GET /api/?ip=<?php echo h((string) $queryIp); ?></pre>
+						<pre><?php echo h($curlBasic); ?></pre>
 						<div class="api-actions">
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($basicApi); ?>">Copy path</button>
+							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($curlBasic); ?>">Copy curl</button>
 							<a class="btn btn-primary btn-small" href="<?php echo h($basicApi); ?>" target="_blank" rel="noopener noreferrer">Open JSON</a>
 						</div>
 					</div>
 					<div class="api-item">
 						<h3>Detailed</h3>
 						<pre>GET /api/detailed/?ip=<?php echo h((string) $queryIp); ?></pre>
+						<pre><?php echo h($curlHost); ?></pre>
 						<div class="api-actions">
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($detailedApi); ?>">Copy path</button>
 							<a class="btn btn-primary btn-small" href="<?php echo h($detailedApi); ?>" target="_blank" rel="noopener noreferrer">Open JSON</a>
@@ -235,6 +290,6 @@ if ($ok) {
 
 		<div id="toast" class="toast" role="status">Copied</div>
 		<script src="assets/js/leaflet.js"></script>
-		<script src="assets/js/main.js?v=4" defer></script>
+		<script src="assets/js/main.js?v=5" defer></script>
 	</body>
 </html>

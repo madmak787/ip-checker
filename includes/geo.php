@@ -80,6 +80,260 @@ function geo_normalize_ip(?string $ip): ?string
     return null;
 }
 
+function geo_normalize_host(string $query): ?string
+{
+    $host = trim($query);
+    $host = preg_replace('#^https?://#i', '', $host) ?? $host;
+    $host = explode('/', $host)[0];
+    $host = explode('?', $host)[0];
+    if (preg_match('/^([a-z0-9.-]+):\d+$/i', $host, $m)) {
+        $host = $m[1];
+    }
+    $host = strtolower(rtrim($host, '.'));
+    if ($host === '' || strlen($host) > 253) {
+        return null;
+    }
+    if (!preg_match('/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i', $host)) {
+        return null;
+    }
+
+    return $host;
+}
+
+function geo_resolve_target(string $raw): array
+{
+    $ip = geo_normalize_ip($raw);
+    if ($ip !== null) {
+        return ['ok' => true, 'ip' => $ip, 'query' => $raw, 'resolved_from' => null];
+    }
+
+    $host = geo_normalize_host($raw);
+    if ($host === null) {
+        return [
+            'ok' => false,
+            'error' => 'invalid_query',
+            'message' => 'Enter a valid IPv4, IPv6, or hostname.',
+        ];
+    }
+
+    $ip = null;
+    $aRecords = @dns_get_record($host, DNS_A);
+    if (is_array($aRecords)) {
+        foreach ($aRecords as $record) {
+            if (!empty($record['ip']) && filter_var($record['ip'], FILTER_VALIDATE_IP)) {
+                $ip = $record['ip'];
+                break;
+            }
+        }
+    }
+    if ($ip === null) {
+        $aaaa = @dns_get_record($host, DNS_AAAA);
+        if (is_array($aaaa)) {
+            foreach ($aaaa as $record) {
+                if (!empty($record['ipv6']) && filter_var($record['ipv6'], FILTER_VALIDATE_IP)) {
+                    $ip = $record['ipv6'];
+                    break;
+                }
+            }
+        }
+    }
+    if ($ip === null) {
+        $guess = @gethostbyname($host);
+        if (is_string($guess) && $guess !== $host && filter_var($guess, FILTER_VALIDATE_IP)) {
+            $ip = $guess;
+        }
+    }
+    if ($ip === null) {
+        return [
+            'ok' => false,
+            'error' => 'host_not_found',
+            'message' => 'Could not resolve that hostname.',
+        ];
+    }
+
+    return ['ok' => true, 'ip' => $ip, 'query' => $raw, 'resolved_from' => $host];
+}
+
+function geo_reverse_dns(string $ip): ?string
+{
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        $parts = explode('.', $ip);
+        $ptr = implode('.', array_reverse($parts)) . '.in-addr.arpa';
+        $records = @dns_get_record($ptr, DNS_PTR);
+        if (is_array($records)) {
+            foreach ($records as $record) {
+                if (!empty($record['target'])) {
+                    return rtrim((string) $record['target'], '.');
+                }
+            }
+        }
+    }
+
+    $name = @gethostbyaddr($ip);
+    if (!is_string($name) || $name === '' || $name === $ip) {
+        return null;
+    }
+
+    return $name;
+}
+
+function geo_parse_asn($value): ?int
+{
+    if (is_int($value) || (is_string($value) && ctype_digit($value))) {
+        $n = (int) $value;
+
+        return $n > 0 ? $n : null;
+    }
+    if (is_string($value) && preg_match('/AS(\d+)/i', $value, $m)) {
+        return (int) $m[1];
+    }
+
+    return null;
+}
+
+function geo_classify_network(?string $org, bool $hostingFlag = false, bool $proxyFlag = false): array
+{
+    $hay = strtolower((string) $org);
+    $vpnWords = ['vpn', 'proxy', 'tor exit', 'tor-exit', 'anonymiz', 'mullvad', 'nordvpn', 'proton vpn', 'expressvpn', 'surfshark', 'windscribe', 'cyberghost', 'hide.me', 'private internet', 'cloudflare warp'];
+    $hostWords = ['amazon', 'aws', 'azure', 'google cloud', 'google llc', 'digitalocean', 'digital ocean', 'linode', 'vultr', 'hetzner', 'ovh', 'cloudflare', 'akamai', 'fastly', 'leaseweb', 'datacenter', 'data center', 'colo', 'dedicated', 'vps', 'hosting', 'server', 'oracle cloud', 'alibaba', 'm247', 'datacamp', 'choopa', 'contabo', 'scaleway', 'rackspace'];
+
+    if ($proxyFlag) {
+        return ['kind' => 'vpn', 'label' => 'Likely VPN or proxy'];
+    }
+    foreach ($vpnWords as $word) {
+        if ($hay !== '' && str_contains($hay, $word)) {
+            return ['kind' => 'vpn', 'label' => 'Likely VPN or proxy'];
+        }
+    }
+    if ($hostingFlag) {
+        return ['kind' => 'hosting', 'label' => 'Likely hosting or datacenter'];
+    }
+    foreach ($hostWords as $word) {
+        if ($hay !== '' && str_contains($hay, $word)) {
+            return ['kind' => 'hosting', 'label' => 'Likely hosting or datacenter'];
+        }
+    }
+    if ($hay !== '') {
+        return ['kind' => 'isp', 'label' => 'Likely ISP or enterprise'];
+    }
+
+    return ['kind' => 'unknown', 'label' => 'Network type unknown'];
+}
+
+function geo_lookup_asn(string $ip): array
+{
+    $db = __DIR__ . '/../maxmind-geoip/databases/GeoLite2-ASN.mmdb';
+    if (!is_readable($db)) {
+        return [];
+    }
+    try {
+        $reader = new Reader($db);
+        $record = $reader->asn($ip);
+
+        return [
+            'asn' => $record->autonomousSystemNumber,
+            'asn_org' => $record->autonomousSystemOrganization,
+            'network' => $record->network,
+        ];
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function geo_lookup_connection(string $ip): array
+{
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE)) {
+        return [];
+    }
+    $row = geo_http_get('https://ipwho.is/' . rawurlencode($ip));
+    if (!is_array($row) || empty($row['success'])) {
+        return [];
+    }
+    $conn = is_array($row['connection'] ?? null) ? $row['connection'] : [];
+
+    return [
+        'asn' => geo_parse_asn($conn['asn'] ?? null),
+        'asn_org' => $conn['org'] ?? ($conn['isp'] ?? ($row['isp'] ?? null)),
+        'isp' => $conn['isp'] ?? ($row['isp'] ?? null),
+    ];
+}
+
+function geo_enrich_network(string $ip, array $base, array $points = []): array
+{
+    $asnDb = geo_lookup_asn($ip);
+    $asn = $asnDb['asn'] ?? null;
+    $org = $asnDb['asn_org'] ?? null;
+    $network = $asnDb['network'] ?? ($base['network'] ?? null);
+    $isp = $base['isp'] ?? null;
+    $hostingFlag = false;
+    $proxyFlag = false;
+
+    foreach ($points as $point) {
+        if ($asn === null && !empty($point['asn'])) {
+            $asn = (int) $point['asn'];
+        }
+        if ($org === null && !empty($point['asn_org'])) {
+            $org = (string) $point['asn_org'];
+        }
+        if ($isp === null && !empty($point['isp'])) {
+            $isp = (string) $point['isp'];
+        }
+        $hostingFlag = $hostingFlag || !empty($point['hosting']);
+        $proxyFlag = $proxyFlag || !empty($point['proxy']);
+    }
+
+    if ($asn === null || $org === null) {
+        $conn = geo_lookup_connection($ip);
+        if ($asn === null && !empty($conn['asn'])) {
+            $asn = $conn['asn'];
+        }
+        if ($org === null && !empty($conn['asn_org'])) {
+            $org = $conn['asn_org'];
+        }
+        if ($isp === null && !empty($conn['isp'])) {
+            $isp = $conn['isp'];
+        }
+    }
+
+    if ($org === null) {
+        $org = $isp;
+    }
+    $class = geo_classify_network($org, $hostingFlag, $proxyFlag);
+    $base['asn'] = $asn;
+    $base['asn_org'] = $org;
+    $base['isp'] = $isp ?: $org;
+    $base['network'] = $network;
+    $base['hostname'] = geo_reverse_dns($ip);
+    $base['connection_kind'] = $class['kind'];
+    $base['connection_hint'] = $class['label'];
+    $base['likely_vpn'] = $class['kind'] === 'vpn';
+    $base['likely_hosting'] = $class['kind'] === 'hosting';
+    $base['ip_version'] = geo_is_ipv4($ip) ? 4 : 6;
+
+    return $base;
+}
+
+function geo_public_base(): string
+{
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $scheme = $https ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
+    $dir = rtrim(dirname($script), '/');
+    if (str_ends_with($dir, '/detailed')) {
+        $dir = dirname($dir);
+    }
+    if (str_ends_with($dir, '/api')) {
+        $dir = dirname($dir);
+    }
+    if ($dir === '/' || $dir === '\\' || $dir === '.') {
+        $dir = '';
+    }
+
+    return $scheme . '://' . $host . $dir;
+}
+
 function geo_haversine_km(float $lat1, float $lon1, float $lat2, float $lon2): float
 {
     $earth = 6371.0;
@@ -163,7 +417,7 @@ function geo_cache_dir(): string
 
 function geo_cache_get(string $ip): ?array
 {
-    $file = geo_cache_dir() . '/' . hash('sha256', $ip) . '.json';
+    $file = geo_cache_dir() . '/' . hash('sha256', 'v4|' . $ip) . '.json';
     if (!is_readable($file)) {
         return null;
     }
@@ -180,7 +434,7 @@ function geo_cache_set(string $ip, array $data, int $ttl = 86400): void
     if (empty($data['ok'])) {
         return;
     }
-    $file = geo_cache_dir() . '/' . hash('sha256', $ip) . '.json';
+    $file = geo_cache_dir() . '/' . hash('sha256', 'v4|' . $ip) . '.json';
     @file_put_contents($file, json_encode([
         'expires' => time() + $ttl,
         'data' => $data,
@@ -239,14 +493,20 @@ function geo_parse_remote_points(array $payloads): array
         $isp = $row['connection']['isp'] ?? ($row['isp'] ?? null);
         $point = geo_point('ipwho.is', $row['latitude'] ?? null, $row['longitude'] ?? null, $row['city'] ?? null, $row['region'] ?? null, $row['country'] ?? null, $row['country_code'] ?? null, $row['postal'] ?? null, $timezone, $isp);
         if ($point) {
+            $point['asn'] = geo_parse_asn($row['connection']['asn'] ?? null);
+            $point['asn_org'] = $row['connection']['org'] ?? $isp;
             $points[] = $point;
         }
     }
 
     if (($payloads['ipapi_com']['status'] ?? '') === 'success') {
         $row = $payloads['ipapi_com'];
-        $point = geo_point('ip-api.com', $row['lat'] ?? null, $row['lon'] ?? null, $row['city'] ?? null, $row['regionName'] ?? null, $row['country'] ?? null, $row['countryCode'] ?? null, $row['zip'] ?? null, $row['timezone'] ?? null, $row['isp'] ?? null);
+        $point = geo_point('ip-api.com', $row['lat'] ?? null, $row['lon'] ?? null, $row['city'] ?? null, $row['regionName'] ?? null, $row['country'] ?? null, $row['countryCode'] ?? null, $row['zip'] ?? null, $row['timezone'] ?? null, $row['isp'] ?? ($row['org'] ?? null));
         if ($point) {
+            $point['asn'] = geo_parse_asn($row['as'] ?? null);
+            $point['asn_org'] = $row['asname'] ?? ($row['org'] ?? $row['isp'] ?? null);
+            $point['hosting'] = !empty($row['hosting']);
+            $point['proxy'] = !empty($row['proxy']);
             $points[] = $point;
         }
     }
@@ -261,9 +521,12 @@ function geo_parse_remote_points(array $payloads): array
 
     if (isset($payloads['ipquery']['location']) && is_array($payloads['ipquery']['location'])) {
         $row = $payloads['ipquery']['location'];
-        $isp = $payloads['ipquery']['isp']['org'] ?? ($payloads['ipquery']['isp']['isp'] ?? null);
+        $ispInfo = is_array($payloads['ipquery']['isp'] ?? null) ? $payloads['ipquery']['isp'] : [];
+        $isp = $ispInfo['org'] ?? ($ispInfo['isp'] ?? null);
         $point = geo_point('ipquery.io', $row['latitude'] ?? null, $row['longitude'] ?? null, $row['city'] ?? null, $row['state'] ?? ($row['region'] ?? null), $row['country'] ?? null, $row['country_code'] ?? null, $row['zipcode'] ?? ($row['postal'] ?? null), $row['timezone'] ?? null, $isp);
         if ($point) {
+            $point['asn'] = geo_parse_asn($ispInfo['asn'] ?? null);
+            $point['asn_org'] = $ispInfo['org'] ?? $isp;
             $points[] = $point;
         }
     }
@@ -419,7 +682,7 @@ function geo_lookup_remote(string $ip): array
     $urls = [
         'ipwho' => 'https://ipwho.is/' . $encoded,
         'ipquery' => 'https://api.ipquery.io/' . $encoded,
-        'ipapi_com' => 'http://ip-api.com/json/' . $encoded . '?fields=status,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,query',
+        'ipapi_com' => 'http://ip-api.com/json/' . $encoded . '?fields=status,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,hosting,proxy,query',
     ];
 
     $points = [];
@@ -531,6 +794,8 @@ function geo_lookup(string $ip): array
     $best = geo_pick_best_point($points);
     if ($best === null) {
         if (!empty($local['ok'])) {
+            $local = geo_enrich_network($ip, $local, $points);
+            unset($local['point']);
             geo_cache_set($ip, $local, 21600);
         }
         return $local;
@@ -550,6 +815,9 @@ function geo_lookup(string $ip): array
     $base['region'] = $best['region'] ?: ($base['region'] ?? null);
     $base['country'] = $best['country'] ?: ($base['country'] ?? null);
     $base['country_code'] = $best['country_code'] ?: ($base['country_code'] ?? null);
+    if (($best['country'] ?? '') !== '' && ($best['country'] !== ($local['country'] ?? null))) {
+        $base['continent'] = null;
+    }
     $base['postal'] = $best['postal'] ?: ($base['postal'] ?? null);
     $base['timezone'] = $best['timezone'] ?: ($base['timezone'] ?? null);
     $base['latitude'] = $best['lat'];
@@ -560,6 +828,7 @@ function geo_lookup(string $ip): array
     }
     $base['sources'] = $best['sources'];
     unset($base['point']);
+    $base = geo_enrich_network($ip, $base, $points);
 
     geo_cache_set($ip, $base);
 

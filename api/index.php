@@ -9,22 +9,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     exit;
 }
 
-$rawIp = isset($_GET['ip']) ? (string) $_GET['ip'] : geo_client_ip();
-$ip = geo_normalize_ip($rawIp);
+$rawIp = isset($_GET['ip']) ? trim((string) $_GET['ip']) : geo_client_ip();
+$resolved = geo_resolve_target($rawIp);
 
-if ($ip === null) {
+if (!$resolved['ok']) {
     geo_respond([
         'ok' => false,
-        'error' => 'invalid_ip',
-        'message' => 'Provide a valid IPv4 or IPv6 address.',
+        'error' => $resolved['error'] ?? 'invalid_query',
+        'message' => $resolved['message'] ?? 'Provide a valid IPv4, IPv6, or hostname.',
     ], 400);
 }
 
-$result = geo_lookup($ip);
+$result = geo_lookup($resolved['ip']);
 if (!$result['ok']) {
     $status = $result['error'] === 'not_found' ? 404 : 503;
     geo_respond($result, $status);
 }
 
+$result['query'] = $resolved['query'];
+$result['resolved_from'] = $resolved['resolved_from'];
 unset($result['raw']);
 geo_respond($result);

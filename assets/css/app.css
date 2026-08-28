@@ -242,7 +242,84 @@ html.dark .theme-toggle .icon-sun {
 
 .facts {
   padding: 20px 22px;
-  height: 100%;
+}
+
+.facts-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.facts.compact {
+  padding: 14px 18px;
+}
+
+.facts.compact .ip-row {
+  margin-bottom: 0;
+}
+
+.facts.compact .ip-row h2 {
+  font-size: 16px;
+}
+
+.hint {
+  display: inline-flex;
+  margin: 0 0 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.hint-hosting {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.hint-vpn {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.hint-isp {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+html.dark .hint-isp {
+  background: #13281d;
+  color: #75e0a7;
+}
+
+.hint-unknown {
+  background: var(--accent-soft);
+  color: var(--muted);
+}
+
+.share,
+.api {
+  margin-bottom: 16px;
+  padding: 20px 22px;
+}
+
+.share h2,
+.api h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.share p,
+.api p {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.share-grid,
+.api-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
 .kicker {
@@ -441,7 +518,8 @@ html.dark .theme-toggle .icon-sun {
 
 @media (max-width: 700px) {
   .results,
-  .api-grid {
+  .api-grid,
+  .share-grid {
     grid-template-columns: 1fr;
   }
 
