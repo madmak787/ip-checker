@@ -130,8 +130,8 @@ function geo_http_multi(array $urls): array
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_CONNECTTIMEOUT => 2,
-                CURLOPT_TIMEOUT => 3,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 4,
                 CURLOPT_USERAGENT => 'IPChecker/1.0',
             ]);
             $handles[$name] = $ch;
@@ -253,6 +253,66 @@ function geo_parse_remote_points(array $payloads): array
         }
     }
 
+    if (isset($payloads['ipquery']['location']) && is_array($payloads['ipquery']['location'])) {
+        $row = $payloads['ipquery']['location'];
+        $isp = $payloads['ipquery']['isp']['org'] ?? ($payloads['ipquery']['isp']['isp'] ?? null);
+        $point = geo_point('ipquery.io', $row['latitude'] ?? null, $row['longitude'] ?? null, $row['city'] ?? null, $row['state'] ?? ($row['region'] ?? null), $row['country'] ?? null, $row['country_code'] ?? null, $row['zipcode'] ?? ($row['postal'] ?? null), $row['timezone'] ?? null, $isp);
+        if ($point) {
+            $points[] = $point;
+        }
+    }
+
+    if (isset($payloads['freeipapi']['latitude'], $payloads['freeipapi']['longitude'])) {
+        $row = $payloads['freeipapi'];
+        $point = geo_point('freeipapi', $row['latitude'], $row['longitude'], $row['cityName'] ?? null, $row['regionName'] ?? null, $row['countryName'] ?? null, $row['countryCode'] ?? null, $row['zipCode'] ?? null, $row['timeZones'][0] ?? null, null);
+        if ($point) {
+            $points[] = $point;
+        }
+    }
+
+    if (isset($payloads['ipapi_is']['location']) && is_array($payloads['ipapi_is']['location'])) {
+        $row = $payloads['ipapi_is']['location'];
+        $isp = $payloads['ipapi_is']['company']['name'] ?? ($payloads['ipapi_is']['asn']['org'] ?? null);
+        $point = geo_point('ipapi.is', $row['latitude'] ?? null, $row['longitude'] ?? null, $row['city'] ?? null, $row['state'] ?? null, $row['country'] ?? null, $row['country_code'] ?? null, $row['zip'] ?? ($row['postal'] ?? null), $row['timezone'] ?? null, $isp);
+        if ($point) {
+            $points[] = $point;
+        }
+    }
+
+    return $points;
+}
+
+function geo_median(array $values): float
+{
+    sort($values, SORT_NUMERIC);
+    $count = count($values);
+    $mid = intdiv($count, 2);
+    if ($count % 2 === 1) {
+        return (float) $values[$mid];
+    }
+
+    return ((float) $values[$mid - 1] + (float) $values[$mid]) / 2;
+}
+
+function geo_majority_group(array $points, string $key): array
+{
+    $groups = [];
+    foreach ($points as $point) {
+        $value = strtolower(trim((string) ($point[$key] ?? '')));
+        if ($value === '') {
+            continue;
+        }
+        $groups[$value][] = $point;
+    }
+    if ($groups === []) {
+        return $points;
+    }
+    uasort($groups, static fn ($a, $b) => count($b) <=> count($a));
+    $top = reset($groups);
+    if (count($top) >= 2) {
+        return array_values($top);
+    }
+
     return $points;
 }
 
@@ -271,21 +331,28 @@ function geo_pick_best_point(array $points): ?array
         return null;
     }
 
+    $usable = geo_majority_group($usable, 'city');
+    $postalGroup = geo_majority_group($usable, 'postal');
+    if (count($postalGroup) >= 2) {
+        $usable = $postalGroup;
+    }
+
+    $radiusLimit = count($postalGroup) >= 2 ? 12.0 : 25.0;
     $best = null;
     $bestScore = -1;
     foreach ($usable as $candidate) {
         $neighbors = [];
         foreach ($usable as $other) {
-            if (geo_haversine_km($candidate['lat'], $candidate['lng'], $other['lat'], $other['lng']) <= 40) {
+            if (geo_haversine_km($candidate['lat'], $candidate['lng'], $other['lat'], $other['lng']) <= $radiusLimit) {
                 $neighbors[] = $other;
             }
         }
         $score = count($neighbors) * 10;
         if (!empty($candidate['city'])) {
-            $score += 5;
+            $score += 8;
         }
         if (!empty($candidate['postal'])) {
-            $score += 3;
+            $score += 6;
         }
         if ($score > $bestScore) {
             $bestScore = $score;
@@ -297,29 +364,37 @@ function geo_pick_best_point(array $points): ?array
         return null;
     }
 
-    $lat = 0.0;
-    $lng = 0.0;
-    foreach ($best['neighbors'] as $neighbor) {
-        $lat += $neighbor['lat'];
-        $lng += $neighbor['lng'];
-    }
-    $count = count($best['neighbors']);
-    $lat /= $count;
-    $lng /= $count;
+    $lats = array_column($best['neighbors'], 'lat');
+    $lngs = array_column($best['neighbors'], 'lng');
+    $lat = geo_median($lats);
+    $lng = geo_median($lngs);
 
-    $radius = 1.0;
+    $distances = [];
     foreach ($best['neighbors'] as $neighbor) {
-        $radius = max($radius, geo_haversine_km($lat, $lng, $neighbor['lat'], $neighbor['lng']));
+        $distances[] = geo_haversine_km($lat, $lng, $neighbor['lat'], $neighbor['lng']);
     }
-    $radius = max(1, (int) round($radius));
+    sort($distances, SORT_NUMERIC);
+    $cutoff = $distances[(int) floor(0.8 * max(0, count($distances) - 1))] ?? 0;
+    $radius = max(1, (int) ceil($cutoff > 0 ? $cutoff : 5));
+    if (count($best['neighbors']) === 1) {
+        $radius = max($radius, 8);
+    }
 
     $fill = static function (string $key) use ($best) {
+        $counts = [];
         foreach ($best['neighbors'] as $neighbor) {
-            if (!empty($neighbor[$key])) {
-                return $neighbor[$key];
+            $value = trim((string) ($neighbor[$key] ?? ''));
+            if ($value === '') {
+                continue;
             }
+            $counts[$value] = ($counts[$value] ?? 0) + 1;
         }
-        return $best['center'][$key] ?? null;
+        if ($counts === []) {
+            return $best['center'][$key] ?? null;
+        }
+        arsort($counts);
+
+        return (string) array_key_first($counts);
     };
 
     return [
@@ -350,6 +425,9 @@ function geo_lookup_remote(string $ip): array
         'ipapi_co' => 'https://ipapi.co/' . $encoded . '/json/',
         'ipinfo' => 'https://ipinfo.io/' . $encoded . '/json',
         'geojs' => 'https://get.geojs.io/v1/ip/geo/' . $encoded . '.json',
+        'ipquery' => 'https://api.ipquery.io/' . $encoded,
+        'freeipapi' => 'https://free.freeipapi.com/api/json/' . $encoded,
+        'ipapi_is' => 'https://api.ipapi.is/?q=' . $encoded,
     ]);
 
     return geo_parse_remote_points($payloads);

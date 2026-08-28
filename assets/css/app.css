@@ -319,14 +319,23 @@ html.dark .theme-toggle .icon-sun {
 .map-card {
   overflow: hidden;
   position: relative;
-  min-height: 460px;
+  height: 460px;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background: #dbe4ee;
 }
 
 .map-locate {
   position: absolute;
   top: 12px;
   right: 12px;
-  z-index: 500;
+  z-index: 1000;
 }
 
 .ip-marker {
@@ -437,7 +446,7 @@ html.dark .theme-toggle .icon-sun {
   }
 
   .map-card {
-    min-height: 300px;
+    height: 320px;
   }
 }
 

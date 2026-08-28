@@ -95,7 +95,11 @@
   });
 
   function tileUrl() {
-    return "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+    return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  }
+
+  function fallbackTileUrl() {
+    return "https://tile.openstreetmap.de/{z}/{x}/{y}.png";
   }
 
   const mapEl = document.getElementById("map");
@@ -120,8 +124,17 @@
   });
 
   window.ipMapLayer = L.tileLayer(tileUrl(), {
-    attribution: "&copy; OpenStreetMap",
+    attribution: "&copy; OpenStreetMap, &copy; CARTO",
+    maxZoom: 19,
   }).addTo(map);
+
+  window.ipMapLayer.on("tileerror", function () {
+    if (window.ipMapLayer._fallbackApplied) {
+      return;
+    }
+    window.ipMapLayer._fallbackApplied = true;
+    window.ipMapLayer.setUrl(fallbackTileUrl());
+  });
 
   const pinIcon = L.divIcon({
     className: "",
@@ -202,13 +215,12 @@
     }
     if (ipAccuracy > 0) {
       circle = L.circle([mapData.lat, mapData.lng], {
-        radius: Math.max(1000, ipAccuracy * 1000),
+        radius: Math.max(800, ipAccuracy * 1000),
         color: "#2563eb",
         weight: 1,
         fillColor: "#3b82f6",
         fillOpacity: 0.12,
       }).addTo(map);
-      map.fitBounds(circle.getBounds(), { padding: [28, 28], maxZoom: 14 });
     }
   }
 
@@ -219,5 +231,10 @@
 
   window.setTimeout(() => {
     map.invalidateSize();
-  }, 200);
+    if (circle) {
+      map.fitBounds(circle.getBounds(), { padding: [24, 24], maxZoom: 14 });
+    } else if (marker) {
+      map.setView(marker.getLatLng(), startZoom);
+    }
+  }, 250);
 })();
