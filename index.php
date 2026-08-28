@@ -45,12 +45,14 @@ if ($place !== '' && $place === $countryLabel) {
     $place = '';
 }
 
+$showMap = $hasMap || $isOwnLookup;
 $mapPayload = [
     'lat' => $hasMap ? (float) $result['latitude'] : null,
     'lng' => $hasMap ? (float) $result['longitude'] : null,
     'title' => $displayIp,
     'details' => $place,
     'accuracy' => $ok ? $result['accuracy_radius_km'] : null,
+    'useDeviceLocation' => $isOwnLookup,
 ];
 
 $showIpv6 = $isOwnLookup && $clientIpv6 && $clientIpv6 !== $displayIp;
@@ -64,8 +66,8 @@ if ($ok) {
         ['Continent', $result['continent']],
         ['Postal', $result['postal']],
         ['Timezone', $result['timezone']],
-        ['Coordinates', $hasMap ? $result['latitude'] . ', ' . $result['longitude'] : null],
-        ['Accuracy', $result['accuracy_radius_km'] ? '± ' . $result['accuracy_radius_km'] . ' km' : null],
+        ['Coordinates', $isOwnLookup ? 'Locating…' : ($hasMap ? $result['latitude'] . ', ' . $result['longitude'] : null)],
+        ['Accuracy', $isOwnLookup ? '± 1 km' : ($result['accuracy_radius_km'] ? '± ' . $result['accuracy_radius_km'] . ' km (IP estimate)' : null)],
         ['Network', $result['network']],
     ];
     foreach ($candidates as $row) {
@@ -96,7 +98,10 @@ if ($ok) {
 				} catch (e) {}
 			})();
 			var mapData = <?php echo json_encode($mapPayload, JSON_UNESCAPED_SLASHES); ?>;
-			var pageConfig = <?php echo json_encode(['detectIpv4' => $detectIpv4], JSON_UNESCAPED_SLASHES); ?>;
+			var pageConfig = <?php echo json_encode([
+				'detectIpv4' => $detectIpv4,
+				'useDeviceLocation' => $isOwnLookup,
+			], JSON_UNESCAPED_SLASHES); ?>;
 		</script>
 	</head>
 	<body>
@@ -168,7 +173,7 @@ if ($ok) {
 							<?php foreach ($fieldRows as $row): ?>
 								<div class="row">
 									<dt><?php echo h($row[0]); ?></dt>
-									<dd><?php echo h($row[1]); ?></dd>
+									<dd<?php echo $row[0] === 'Coordinates' ? ' id="field-coordinates"' : ($row[0] === 'Accuracy' ? ' id="field-accuracy"' : ''); ?>><?php echo h($row[1]); ?></dd>
 								</div>
 							<?php endforeach; ?>
 							<?php if ($showIpv6): ?>
@@ -183,8 +188,11 @@ if ($ok) {
 						</dl>
 					</div>
 					<div class="panel map-card">
-						<?php if ($hasMap): ?>
+						<?php if ($showMap): ?>
 							<div id="map"></div>
+							<?php if ($isOwnLookup): ?>
+								<button type="button" id="precise-location" class="btn btn-primary btn-small map-locate">Use precise location</button>
+							<?php endif; ?>
 						<?php else: ?>
 							<div class="notice">No map coordinates for this address.</div>
 						<?php endif; ?>

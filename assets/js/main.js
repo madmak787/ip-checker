@@ -98,21 +98,23 @@
     return "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   }
 
-  if (typeof L === "undefined" || typeof mapData === "undefined" || mapData.lat == null || mapData.lng == null) {
-    return;
-  }
-
   const mapEl = document.getElementById("map");
-  if (!mapEl) {
+  const useDevice = !!(pageConfig.useDeviceLocation && mapEl);
+  if (typeof L === "undefined" || typeof mapData === "undefined" || !mapEl) {
+    return;
+  }
+  if (mapData.lat == null && !useDevice) {
     return;
   }
 
-  const accuracy = Number(mapData.accuracy) || 0;
-  const zoom = accuracy >= 500 ? 4 : accuracy >= 100 ? 6 : 10;
+  const startLat = mapData.lat != null ? mapData.lat : 20.5937;
+  const startLng = mapData.lng != null ? mapData.lng : 78.9629;
+  const ipAccuracy = Number(mapData.accuracy) || 0;
+  const startZoom = useDevice ? 12 : ipAccuracy >= 500 ? 4 : ipAccuracy >= 100 ? 6 : 10;
 
   const map = L.map("map", {
-    center: [mapData.lat, mapData.lng],
-    zoom: zoom,
+    center: [startLat, startLng],
+    zoom: startZoom,
     scrollWheelZoom: false,
     zoomControl: true,
   });
@@ -121,19 +123,87 @@
     attribution: "&copy; OpenStreetMap",
   }).addTo(map);
 
-  const marker = L.marker([mapData.lat, mapData.lng], {
-    title: mapData.title,
-    icon: L.divIcon({
-      className: "",
-      html: '<div class="ip-marker"></div>',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-      popupAnchor: [0, -10],
-    }),
-  }).addTo(map);
+  const pinIcon = L.divIcon({
+    className: "",
+    html: '<div class="ip-marker"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -10],
+  });
 
-  if (mapData.details) {
-    marker.bindPopup(mapData.details);
+  let marker = null;
+  let circle = null;
+
+  const setPrecise = (lat, lng) => {
+    const point = [lat, lng];
+    if (!marker) {
+      marker = L.marker(point, { title: mapData.title, icon: pinIcon }).addTo(map);
+    } else {
+      marker.setLatLng(point);
+    }
+    marker.bindPopup("Within 1 km").openPopup();
+
+    if (!circle) {
+      circle = L.circle(point, {
+        radius: 1000,
+        color: "#2563eb",
+        weight: 1,
+        fillColor: "#3b82f6",
+        fillOpacity: 0.12,
+      }).addTo(map);
+    } else {
+      circle.setLatLng(point);
+    }
+
+    map.fitBounds(circle.getBounds(), { padding: [28, 28], maxZoom: 15 });
+
+    const coords = document.getElementById("field-coordinates");
+    const accuracyField = document.getElementById("field-accuracy");
+    if (coords) {
+      coords.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+    }
+    if (accuracyField) {
+      accuracyField.textContent = "± 1 km";
+    }
+  };
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
+      showToast("This browser cannot share a precise location");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setPrecise(pos.coords.latitude, pos.coords.longitude);
+      },
+      () => {
+        showToast("Allow location to place the map within 1 km");
+        if (mapData.lat != null && mapData.lng != null && !marker) {
+          marker = L.marker([mapData.lat, mapData.lng], {
+            title: mapData.title,
+            icon: pinIcon,
+          }).addTo(map);
+          marker.bindPopup("IP estimate only — not street-level");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  if (useDevice) {
+    requestLocation();
+    const locateBtn = document.getElementById("precise-location");
+    if (locateBtn) {
+      locateBtn.addEventListener("click", requestLocation);
+    }
+  } else {
+    marker = L.marker([mapData.lat, mapData.lng], {
+      title: mapData.title,
+      icon: pinIcon,
+    }).addTo(map);
+    if (mapData.details) {
+      marker.bindPopup(mapData.details);
+    }
   }
 
   window.setTimeout(() => {
