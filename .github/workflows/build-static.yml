@@ -1,0 +1,53 @@
+name: Package PHP site
+
+on:
+  workflow_call:
+    inputs:
+      app-url:
+        description: Public site URL for this module
+        required: true
+        type: string
+
+jobs:
+  compile:
+    name: Stage deploy tree
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage files for FTPS
+        run: |
+          mkdir -p out
+          rsync -a \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.gitignore' \
+            --exclude 'node_modules/' \
+            --exclude 'src/' \
+            --exclude 'out/' \
+            --exclude 'package.json' \
+            --exclude 'package-lock.json' \
+            --exclude 'postcss.config.js' \
+            --exclude 'tailwind.config.js' \
+            --exclude 'maxmind-geoip/index.php' \
+            --exclude '.DS_Store' \
+            ./ out/
+
+          test -f out/index.php
+          test -f out/module_info.json
+          test -f out/maxmind-geoip/databases/GeoLite2-City.mmdb
+          test -d out/includes
+          test -d out/api
+
+      - name: Upload static site
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-site
+          path: out/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error

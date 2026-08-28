@@ -1,0 +1,44 @@
+name: Publish via FTPS
+
+on:
+  workflow_call:
+    inputs:
+      ftp-dir:
+        description: Remote directory on the FTP server
+        required: true
+        type: string
+    secrets:
+      FTP_SERVER:
+        required: true
+      FTP_USERNAME:
+        required: true
+      FTP_PASSWORD:
+        required: true
+
+jobs:
+  publish:
+    name: Upload to hosting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Download static site
+        uses: actions/download-artifact@v4
+        with:
+          name: static-site
+          path: out
+
+      - name: Deploy via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./out/
+          server-dir: ${{ inputs.ftp-dir }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**

@@ -1,0 +1,50 @@
+name: Build & Deploy IP Checker
+
+on:
+  push:
+    branches: [master, main, production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  config:
+    name: Config
+    runs-on: ubuntu-latest
+    outputs:
+      app-url: ${{ steps.vars.outputs.app_url }}
+      ftp-dir: ${{ steps.vars.outputs.ftp_dir }}
+    steps:
+      - name: Resolve deploy targets
+        id: vars
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            main|master|production|Production)
+              echo "app_url=https://tool.khanamir.me/ip-checker" >> "$GITHUB_OUTPUT"
+              echo "ftp_dir=/tool/ip-checker/" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown branch: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+  build:
+    name: Build
+    needs: config
+    uses: ./.github/workflows/build-static.yml
+    with:
+      app-url: ${{ needs.config.outputs.app-url }}
+
+  deploy:
+    name: Deploy
+    needs: [config, build]
+    uses: ./.github/workflows/publish-ftps.yml
+    with:
+      ftp-dir: ${{ needs.config.outputs.ftp-dir }}
+    secrets:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
