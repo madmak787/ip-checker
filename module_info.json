@@ -1,0 +1,9 @@
+{
+  "title":"IP Checker",
+  "short_desc":"Its a IP Checker tool and API to get location information from IP address. Grab details like Country, City, Lat, Lng, Postal Code.",
+  "doclink":"#",
+  "status":"live",
+  "type":"module",
+  "slug": "ip-checker",
+  "tags": "free ip checker"
+}
