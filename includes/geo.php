@@ -8,13 +8,58 @@ use GeoIp2\Database\Reader;
 use GeoIp2\Exception\AddressNotFoundException;
 use MaxMind\Db\Reader\InvalidDatabaseException;
 
-function geo_client_ip(): string
+function geo_is_ipv4(string $ip): bool
 {
-    if (!empty($_SERVER['HTTP_CF_CONNECTING_IP']) && filter_var($_SERVER['HTTP_CF_CONNECTING_IP'], FILTER_VALIDATE_IP)) {
-        return $_SERVER['HTTP_CF_CONNECTING_IP'];
+    return (bool) filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+}
+
+function geo_candidate_ips(): array
+{
+    $headers = [
+        'HTTP_CF_CONNECTING_IP',
+        'HTTP_TRUE_CLIENT_IP',
+        'HTTP_X_REAL_IP',
+        'HTTP_X_FORWARDED_FOR',
+        'REMOTE_ADDR',
+    ];
+    $ips = [];
+
+    foreach ($headers as $header) {
+        if (empty($_SERVER[$header])) {
+            continue;
+        }
+        foreach (preg_split('/\s*,\s*/', (string) $_SERVER[$header]) as $part) {
+            $ip = geo_normalize_ip($part);
+            if ($ip !== null) {
+                $ips[] = $ip;
+            }
+        }
     }
 
-    return $_SERVER['REMOTE_ADDR'] ?? '';
+    return array_values(array_unique($ips));
+}
+
+function geo_client_ip(): string
+{
+    $ips = geo_candidate_ips();
+    foreach ($ips as $ip) {
+        if (geo_is_ipv4($ip)) {
+            return $ip;
+        }
+    }
+
+    return $ips[0] ?? '';
+}
+
+function geo_client_ipv6(): ?string
+{
+    foreach (geo_candidate_ips() as $ip) {
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return $ip;
+        }
+    }
+
+    return null;
 }
 
 function geo_normalize_ip(?string $ip): ?string

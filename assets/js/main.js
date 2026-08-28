@@ -1,6 +1,50 @@
 (function () {
   "use strict";
 
+  const pageConfig = window.pageConfig || {};
+
+  const isIpv4 = (value) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value);
+
+  const fetchIpv4 = async () => {
+    try {
+      const res = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && isIpv4(String(data.ip || ""))) {
+          return String(data.ip);
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const res = await fetch("https://ipv4.icanhazip.com/", { cache: "no-store" });
+      if (res.ok) {
+        const text = (await res.text()).trim();
+        if (isIpv4(text)) {
+          return text;
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  };
+
+  if (pageConfig.detectIpv4) {
+    fetchIpv4().then((ip) => {
+      const status = document.getElementById("ipv4-status");
+      if (!ip) {
+        if (status) {
+          status.textContent = "IPv4 was not available on this connection. Showing IPv6.";
+        }
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set("ip", ip);
+      url.searchParams.set("self", "1");
+      window.location.replace(url.pathname + url.search);
+    });
+  }
+
   const root = document.documentElement;
   const themeSwitcher = document.getElementById("themeSwitcher");
 

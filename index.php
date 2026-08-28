@@ -10,10 +10,13 @@ function h($value): string
 }
 
 $clientIp = geo_client_ip();
+$clientIpv6 = geo_client_ipv6();
 $requested = isset($_GET['ip']) ? trim((string) $_GET['ip']) : '';
-$isOwnLookup = $requested === '';
-$rawTarget = $isOwnLookup ? $clientIp : $requested;
+$isSelf = isset($_GET['self']) && (string) $_GET['self'] === '1';
+$isOwnLookup = $requested === '' || $isSelf;
+$rawTarget = $requested === '' ? $clientIp : $requested;
 $targetIp = geo_normalize_ip($rawTarget);
+$detectIpv4 = $requested === '' && $targetIp !== null && !geo_is_ipv4($targetIp);
 
 $inputError = null;
 $result = null;
@@ -49,6 +52,8 @@ $mapPayload = [
     'details' => $place,
     'accuracy' => $ok ? $result['accuracy_radius_km'] : null,
 ];
+
+$showIpv6 = $isOwnLookup && $clientIpv6 && $clientIpv6 !== $displayIp;
 
 $fieldRows = [];
 if ($ok) {
@@ -91,6 +96,7 @@ if ($ok) {
 				} catch (e) {}
 			})();
 			var mapData = <?php echo json_encode($mapPayload, JSON_UNESCAPED_SLASHES); ?>;
+			var pageConfig = <?php echo json_encode(['detectIpv4' => $detectIpv4], JSON_UNESCAPED_SLASHES); ?>;
 		</script>
 	</head>
 	<body>
@@ -128,6 +134,10 @@ if ($ok) {
 				</form>
 			</section>
 
+			<?php if ($detectIpv4): ?>
+				<div class="notice" id="ipv4-status">Finding your IPv4 address…</div>
+			<?php endif; ?>
+
 			<?php if ($inputError): ?>
 				<div class="notice error"><?php echo h($inputError); ?></div>
 			<?php elseif (!$ok): ?>
@@ -138,10 +148,18 @@ if ($ok) {
 			<?php else: ?>
 				<section class="results">
 					<div class="panel facts">
-						<p class="kicker"><?php echo $isOwnLookup ? 'Your IP' : 'Looked up IP'; ?></p>
+						<p class="kicker"><?php
+							if (!$isOwnLookup) {
+								echo 'Looked up IP';
+							} elseif ($targetIp && geo_is_ipv4($targetIp)) {
+								echo 'Your IPv4';
+							} else {
+								echo 'Your IP';
+							}
+						?></p>
 						<div class="ip-row">
-							<h2><?php echo h($displayIp); ?></h2>
-							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($displayIp); ?>">Copy</button>
+							<h2 id="display-ip"><?php echo h($displayIp); ?></h2>
+							<button type="button" class="btn btn-primary btn-small copy-ip" data-copy="<?php echo h($displayIp); ?>">Copy</button>
 						</div>
 						<?php if ($place !== ''): ?>
 							<p class="place"><?php echo h($place); ?></p>
@@ -153,6 +171,15 @@ if ($ok) {
 									<dd><?php echo h($row[1]); ?></dd>
 								</div>
 							<?php endforeach; ?>
+							<?php if ($showIpv6): ?>
+								<div class="row">
+									<dt>IPv6</dt>
+									<dd class="value-with-copy">
+										<span><?php echo h($clientIpv6); ?></span>
+										<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($clientIpv6); ?>">Copy</button>
+									</dd>
+								</div>
+							<?php endif; ?>
 						</dl>
 					</div>
 					<div class="panel map-card">
