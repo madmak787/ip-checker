@@ -95,7 +95,7 @@
   });
 
   function tileUrl() {
-    return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
+    return "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
   }
 
   function fallbackTileUrl() {
@@ -124,7 +124,7 @@
   });
 
   window.ipMapLayer = L.tileLayer(tileUrl(), {
-    attribution: "&copy; OpenStreetMap, &copy; CARTO",
+    attribution: "&copy; OpenStreetMap",
     maxZoom: 19,
   }).addTo(map);
 

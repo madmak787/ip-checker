@@ -228,23 +228,6 @@ function geo_parse_remote_points(array $payloads): array
         }
     }
 
-    if (empty($payloads['ipapi_co']['error'])) {
-        $row = $payloads['ipapi_co'] ?? [];
-        $point = geo_point('ipapi.co', $row['latitude'] ?? null, $row['longitude'] ?? null, $row['city'] ?? null, $row['region'] ?? null, $row['country_name'] ?? null, $row['country_code'] ?? null, $row['postal'] ?? null, $row['timezone'] ?? null, $row['org'] ?? null);
-        if ($point) {
-            $points[] = $point;
-        }
-    }
-
-    if (!empty($payloads['ipinfo']['loc']) && is_string($payloads['ipinfo']['loc'])) {
-        $row = $payloads['ipinfo'];
-        [$lat, $lng] = array_pad(explode(',', $row['loc']), 2, null);
-        $point = geo_point('ipinfo.io', $lat, $lng, $row['city'] ?? null, $row['region'] ?? null, $row['country'] ?? null, $row['country'] ?? null, $row['postal'] ?? null, $row['timezone'] ?? null, $row['org'] ?? null);
-        if ($point) {
-            $points[] = $point;
-        }
-    }
-
     if (isset($payloads['geojs']['latitude'], $payloads['geojs']['longitude'])) {
         $row = $payloads['geojs'];
         $point = geo_point('geojs.io', $row['latitude'], $row['longitude'], $row['city'] ?? null, $row['region'] ?? null, $row['country'] ?? null, $row['country_code'] ?? null, null, $row['timezone'] ?? null, $row['organization_name'] ?? null);
@@ -265,15 +248,6 @@ function geo_parse_remote_points(array $payloads): array
     if (isset($payloads['freeipapi']['latitude'], $payloads['freeipapi']['longitude'])) {
         $row = $payloads['freeipapi'];
         $point = geo_point('freeipapi', $row['latitude'], $row['longitude'], $row['cityName'] ?? null, $row['regionName'] ?? null, $row['countryName'] ?? null, $row['countryCode'] ?? null, $row['zipCode'] ?? null, $row['timeZones'][0] ?? null, null);
-        if ($point) {
-            $points[] = $point;
-        }
-    }
-
-    if (isset($payloads['ipapi_is']['location']) && is_array($payloads['ipapi_is']['location'])) {
-        $row = $payloads['ipapi_is']['location'];
-        $isp = $payloads['ipapi_is']['company']['name'] ?? ($payloads['ipapi_is']['asn']['org'] ?? null);
-        $point = geo_point('ipapi.is', $row['latitude'] ?? null, $row['longitude'] ?? null, $row['city'] ?? null, $row['state'] ?? null, $row['country'] ?? null, $row['country_code'] ?? null, $row['zip'] ?? ($row['postal'] ?? null), $row['timezone'] ?? null, $isp);
         if ($point) {
             $points[] = $point;
         }
@@ -422,12 +396,9 @@ function geo_lookup_remote(string $ip): array
     $payloads = geo_http_multi([
         'ipwho' => 'https://ipwho.is/' . $encoded,
         'ipapi_com' => 'http://ip-api.com/json/' . $encoded . '?fields=status,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,query',
-        'ipapi_co' => 'https://ipapi.co/' . $encoded . '/json/',
-        'ipinfo' => 'https://ipinfo.io/' . $encoded . '/json',
         'geojs' => 'https://get.geojs.io/v1/ip/geo/' . $encoded . '.json',
         'ipquery' => 'https://api.ipquery.io/' . $encoded,
         'freeipapi' => 'https://free.freeipapi.com/api/json/' . $encoded,
-        'ipapi_is' => 'https://api.ipapi.is/?q=' . $encoded,
     ]);
 
     return geo_parse_remote_points($payloads);
