@@ -52,7 +52,7 @@ $mapPayload = [
     'title' => $displayIp,
     'details' => $place,
     'accuracy' => $ok ? $result['accuracy_radius_km'] : null,
-    'useDeviceLocation' => $isOwnLookup,
+    'useDeviceLocation' => false,
 ];
 
 $showIpv6 = $isOwnLookup && $clientIpv6 && $clientIpv6 !== $displayIp;
@@ -66,8 +66,10 @@ if ($ok) {
         ['Continent', $result['continent']],
         ['Postal', $result['postal']],
         ['Timezone', $result['timezone']],
-        ['Coordinates', $isOwnLookup ? 'Locating…' : ($hasMap ? $result['latitude'] . ', ' . $result['longitude'] : null)],
-        ['Accuracy', $isOwnLookup ? '± 1 km' : ($result['accuracy_radius_km'] ? '± ' . $result['accuracy_radius_km'] . ' km (IP estimate)' : null)],
+        ['Coordinates', $hasMap ? $result['latitude'] . ', ' . $result['longitude'] : null],
+        ['Accuracy', $result['accuracy_radius_km'] ? '± ' . $result['accuracy_radius_km'] . ' km' : null],
+        ['Sources', !empty($result['sources']) ? implode(', ', $result['sources']) : null],
+        ['ISP', $result['isp'] ?? null],
         ['Network', $result['network']],
     ];
     foreach ($candidates as $row) {
@@ -100,7 +102,7 @@ if ($ok) {
 			var mapData = <?php echo json_encode($mapPayload, JSON_UNESCAPED_SLASHES); ?>;
 			var pageConfig = <?php echo json_encode([
 				'detectIpv4' => $detectIpv4,
-				'useDeviceLocation' => $isOwnLookup,
+				'useDeviceLocation' => false,
 			], JSON_UNESCAPED_SLASHES); ?>;
 		</script>
 	</head>
@@ -191,7 +193,7 @@ if ($ok) {
 						<?php if ($showMap): ?>
 							<div id="map"></div>
 							<?php if ($isOwnLookup): ?>
-								<button type="button" id="precise-location" class="btn btn-primary btn-small map-locate">Use precise location</button>
+								<button type="button" id="precise-location" class="btn btn-primary btn-small map-locate">Device GPS</button>
 							<?php endif; ?>
 						<?php else: ?>
 							<div class="notice">No map coordinates for this address.</div>

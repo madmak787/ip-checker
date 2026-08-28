@@ -110,7 +110,7 @@
   const startLat = mapData.lat != null ? mapData.lat : 20.5937;
   const startLng = mapData.lng != null ? mapData.lng : 78.9629;
   const ipAccuracy = Number(mapData.accuracy) || 0;
-  const startZoom = useDevice ? 12 : ipAccuracy >= 500 ? 4 : ipAccuracy >= 100 ? 6 : 10;
+  const startZoom = ipAccuracy >= 200 ? 5 : ipAccuracy >= 80 ? 7 : ipAccuracy >= 25 ? 10 : ipAccuracy >= 8 ? 12 : 13;
 
   const map = L.map("map", {
     center: [startLat, startLng],
@@ -192,11 +192,7 @@
 
   if (useDevice) {
     requestLocation();
-    const locateBtn = document.getElementById("precise-location");
-    if (locateBtn) {
-      locateBtn.addEventListener("click", requestLocation);
-    }
-  } else {
+  } else if (mapData.lat != null && mapData.lng != null) {
     marker = L.marker([mapData.lat, mapData.lng], {
       title: mapData.title,
       icon: pinIcon,
@@ -204,6 +200,21 @@
     if (mapData.details) {
       marker.bindPopup(mapData.details);
     }
+    if (ipAccuracy > 0) {
+      circle = L.circle([mapData.lat, mapData.lng], {
+        radius: Math.max(1000, ipAccuracy * 1000),
+        color: "#2563eb",
+        weight: 1,
+        fillColor: "#3b82f6",
+        fillOpacity: 0.12,
+      }).addTo(map);
+      map.fitBounds(circle.getBounds(), { padding: [28, 28], maxZoom: 14 });
+    }
+  }
+
+  const locateBtn = document.getElementById("precise-location");
+  if (locateBtn) {
+    locateBtn.addEventListener("click", requestLocation);
   }
 
   window.setTimeout(() => {
