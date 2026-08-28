@@ -35,6 +35,7 @@ jobs:
             --exclude 'tailwind.config.js' \
             --exclude 'maxmind-geoip/index.php' \
             --exclude '.DS_Store' \
+            --exclude 'cache/' \
             ./ out/
 
           test -f out/index.php

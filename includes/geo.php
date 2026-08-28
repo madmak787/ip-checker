@@ -115,69 +115,92 @@ function geo_is_coarse_point(array $point): bool
     return $city === '' && $accuracy >= 80;
 }
 
-function geo_http_multi(array $urls): array
+function geo_http_get(string $url): ?array
 {
-    $results = array_fill_keys(array_keys($urls), null);
-    if ($urls === []) {
-        return $results;
-    }
-
-    if (function_exists('curl_multi_init')) {
-        $mh = curl_multi_init();
-        $handles = [];
-        foreach ($urls as $name => $url) {
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_CONNECTTIMEOUT => 3,
-                CURLOPT_TIMEOUT => 4,
-                CURLOPT_USERAGENT => 'IPChecker/1.0',
-            ]);
-            $handles[$name] = $ch;
-            curl_multi_add_handle($mh, $ch);
-        }
-
-        do {
-            $status = curl_multi_exec($mh, $running);
-            if ($running) {
-                curl_multi_select($mh, 0.2);
-            }
-        } while ($running && $status === CURLM_OK);
-
-        foreach ($handles as $name => $ch) {
-            $body = curl_multi_getcontent($ch);
-            if (is_string($body) && $body !== '') {
-                $decoded = json_decode($body, true);
-                if (is_array($decoded)) {
-                    $results[$name] = $decoded;
-                }
-            }
-            curl_multi_remove_handle($mh, $ch);
-            curl_close($ch);
-        }
-        curl_multi_close($mh);
-
-        return $results;
-    }
-
-    foreach ($urls as $name => $url) {
-        $context = stream_context_create([
-            'http' => [
-                'timeout' => 3,
-                'header' => "User-Agent: IPChecker/1.0\r\n",
-            ],
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => 4,
+            CURLOPT_USERAGENT => 'IPChecker/1.0',
         ]);
-        $body = @file_get_contents($url, false, $context);
-        if (is_string($body)) {
+        $body = curl_exec($ch);
+        curl_close($ch);
+        if (is_string($body) && $body !== '') {
             $decoded = json_decode($body, true);
-            if (is_array($decoded)) {
-                $results[$name] = $decoded;
-            }
+            return is_array($decoded) ? $decoded : null;
         }
+
+        return null;
     }
 
-    return $results;
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 3,
+            'header' => "User-Agent: IPChecker/1.0\r\n",
+        ],
+    ]);
+    $body = @file_get_contents($url, false, $context);
+    if (!is_string($body)) {
+        return null;
+    }
+    $decoded = json_decode($body, true);
+
+    return is_array($decoded) ? $decoded : null;
+}
+
+function geo_cache_dir(): string
+{
+    $dir = dirname(__DIR__) . '/cache/geo';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    return $dir;
+}
+
+function geo_cache_get(string $ip): ?array
+{
+    $file = geo_cache_dir() . '/' . hash('sha256', $ip) . '.json';
+    if (!is_readable($file)) {
+        return null;
+    }
+    $payload = json_decode((string) file_get_contents($file), true);
+    if (!is_array($payload) || ($payload['expires'] ?? 0) < time() || empty($payload['data']) || !is_array($payload['data'])) {
+        return null;
+    }
+
+    return $payload['data'];
+}
+
+function geo_cache_set(string $ip, array $data, int $ttl = 86400): void
+{
+    if (empty($data['ok'])) {
+        return;
+    }
+    $file = geo_cache_dir() . '/' . hash('sha256', $ip) . '.json';
+    @file_put_contents($file, json_encode([
+        'expires' => time() + $ttl,
+        'data' => $data,
+    ], JSON_UNESCAPED_SLASHES));
+}
+
+function geo_point_is_useful(array $point): bool
+{
+    return !geo_is_coarse_point($point) && !empty($point['city']);
+}
+
+function geo_local_is_precise(array $local): bool
+{
+    if (empty($local['ok']) || empty($local['point'])) {
+        return false;
+    }
+    $point = $local['point'];
+    $accuracy = (float) ($point['accuracy_km'] ?? $local['accuracy_radius_km'] ?? 999);
+
+    return geo_point_is_useful($point) && $accuracy > 0 && $accuracy <= 40;
 }
 
 function geo_point(string $source, $lat, $lng, $city = null, $region = null, $country = null, $countryCode = null, $postal = null, $timezone = null, $isp = null, $accuracyKm = null): ?array
@@ -393,15 +416,24 @@ function geo_lookup_remote(string $ip): array
     }
 
     $encoded = rawurlencode($ip);
-    $payloads = geo_http_multi([
+    $urls = [
         'ipwho' => 'https://ipwho.is/' . $encoded,
-        'ipapi_com' => 'http://ip-api.com/json/' . $encoded . '?fields=status,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,query',
-        'geojs' => 'https://get.geojs.io/v1/ip/geo/' . $encoded . '.json',
         'ipquery' => 'https://api.ipquery.io/' . $encoded,
-        'freeipapi' => 'https://free.freeipapi.com/api/json/' . $encoded,
-    ]);
+        'ipapi_com' => 'http://ip-api.com/json/' . $encoded . '?fields=status,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,query',
+    ];
 
-    return geo_parse_remote_points($payloads);
+    $points = [];
+    foreach ($urls as $name => $url) {
+        $parsed = geo_parse_remote_points([$name => geo_http_get($url)]);
+        foreach ($parsed as $point) {
+            $points[] = $point;
+        }
+        if ($parsed !== [] && geo_point_is_useful($parsed[0])) {
+            break;
+        }
+    }
+
+    return $points;
 }
 
 function geo_lookup_maxmind(string $ip): array
@@ -479,8 +511,18 @@ function geo_lookup_maxmind(string $ip): array
 
 function geo_lookup(string $ip): array
 {
+    $cached = geo_cache_get($ip);
+    if ($cached !== null) {
+        $cached['cached'] = true;
+        return $cached;
+    }
+
     $local = geo_lookup_maxmind($ip);
-    $remote = geo_lookup_remote($ip);
+    $remote = [];
+    if (!geo_local_is_precise($local)) {
+        $remote = geo_lookup_remote($ip);
+    }
+
     $points = $remote;
     if (!empty($local['point'])) {
         $points[] = $local['point'];
@@ -488,6 +530,9 @@ function geo_lookup(string $ip): array
 
     $best = geo_pick_best_point($points);
     if ($best === null) {
+        if (!empty($local['ok'])) {
+            geo_cache_set($ip, $local, 21600);
+        }
         return $local;
     }
 
@@ -510,13 +555,13 @@ function geo_lookup(string $ip): array
     $base['latitude'] = $best['lat'];
     $base['longitude'] = $best['lng'];
     $base['accuracy_radius_km'] = $best['accuracy_km'];
-    if (!empty($best['isp']) && empty($base['network'])) {
-        $base['isp'] = $best['isp'];
-    } elseif (!empty($best['isp'])) {
+    if (!empty($best['isp'])) {
         $base['isp'] = $best['isp'];
     }
     $base['sources'] = $best['sources'];
     unset($base['point']);
+
+    geo_cache_set($ip, $base);
 
     return $base;
 }
