@@ -95,7 +95,7 @@
   });
 
   function tileUrl() {
-    return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+    return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
   }
 
   function fallbackTileUrl() {
