@@ -64,6 +64,7 @@ img {
 .wrap {
   width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
+  min-width: 0;
 }
 
 .site-header {
@@ -219,6 +220,7 @@ html.dark .theme-toggle .icon-sun {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .notice {
@@ -234,7 +236,7 @@ html.dark .theme-toggle .icon-sun {
 
 .results {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
   gap: 16px;
   margin-bottom: 16px;
   align-items: stretch;
@@ -249,6 +251,11 @@ html.dark .theme-toggle .icon-sun {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  height: 100%;
+}
+
+.facts-stack > .facts:not(.compact) {
+  flex: 1 1 auto;
 }
 
 .facts.compact {
@@ -318,7 +325,7 @@ html.dark .hint-isp {
 .share-grid,
 .api-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -335,6 +342,7 @@ html.dark .hint-isp {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 8px;
 }
 
@@ -391,12 +399,16 @@ html.dark .hint-isp {
 .row dd {
   margin: 0;
   font-weight: 550;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .map-card {
   overflow: hidden;
   position: relative;
-  height: 460px;
+  min-width: 0;
+  min-height: 360px;
+  align-self: stretch;
 }
 
 #map {
@@ -446,8 +458,12 @@ html.dark .hint-isp {
 
 .api-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
+}
+
+.api-item {
+  min-width: 0;
 }
 
 .api-item h3 {
@@ -459,17 +475,22 @@ html.dark .hint-isp {
 
 .api-item pre {
   margin: 0 0 10px;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
   background: var(--code-bg);
   color: var(--code-fg);
   border-radius: 8px;
   padding: 12px 14px;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .api-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -520,10 +541,11 @@ html.dark .hint-isp {
   .results,
   .api-grid,
   .share-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .map-card {
+    min-height: 320px;
     height: 320px;
   }
 }

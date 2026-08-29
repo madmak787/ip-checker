@@ -237,4 +237,11 @@
       map.setView(marker.getLatLng(), startZoom);
     }
   }, 250);
+
+  const mapCard = mapEl.closest(".map-card");
+  if (window.ResizeObserver && mapCard) {
+    const resizeMap = () => map.invalidateSize();
+    new ResizeObserver(resizeMap).observe(mapCard);
+    window.addEventListener("resize", resizeMap);
+  }
 })();
