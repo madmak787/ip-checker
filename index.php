@@ -285,6 +285,7 @@ if ($ok) {
 			<div class="wrap">
 				<p>IP data from <a href="https://www.maxmind.com" rel="nofollow noopener" target="_blank">MaxMind</a></p>
 				<p>This product includes GeoLite2 data created by MaxMind.</p>
+				<p>Coded By &copy;<a href="https://khanamir.me" target="_blank" rel="noopener">madmak787</a></p>
 			</div>
 		</footer>
 
