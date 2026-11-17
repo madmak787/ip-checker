@@ -23,7 +23,7 @@ jobs:
           case "${GITHUB_REF_NAME}" in
             main|master|production|Production)
               echo "app_url=https://tool.khanamir.me/ip-checker" >> "$GITHUB_OUTPUT"
-              echo "ftp_dir=/tool/ip-checker/" >> "$GITHUB_OUTPUT"
+              echo "ftp_dir=/domains/khanamir.me/public_html/tool/ip-checker/" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unknown branch: ${GITHUB_REF_NAME}" >&2
