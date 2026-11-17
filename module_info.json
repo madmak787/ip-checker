@@ -1,6 +1,6 @@
 {
   "title":"IP Checker",
-  "short_desc":"Its a IP Checker tool and API to get location information from IP address. Grab details like Country, City, Lat, Lng, Postal Code.",
+  "short_desc":"IP lookup tool and JSON API. Get the country, city, coordinates, ASN and postal code for any IP address or domain.",
   "doclink":"#",
   "status":"live",
   "type":"module",

@@ -140,8 +140,8 @@ html.dark .theme-toggle .icon-sun {
 .hero h1 {
   margin: 0 0 8px;
   font-size: 28px;
-  letter-spacing: -0.03em;
-  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-weight: 500;
 }
 
 .hero p {
@@ -276,7 +276,7 @@ html.dark .theme-toggle .icon-sun {
   padding: 3px 8px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .hint-hosting {
@@ -331,10 +331,8 @@ html.dark .hint-isp {
 
 .kicker {
   margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 400;
   color: var(--muted);
 }
 
@@ -351,7 +349,7 @@ html.dark .hint-isp {
   flex: 1;
   min-width: 0;
   font-size: 22px;
-  letter-spacing: -0.03em;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   word-break: break-all;
 }

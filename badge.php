@@ -66,7 +66,7 @@ header('Cache-Control: public, max-age=3600');
 			letter-spacing: 0.04em;
 		}
 		.meta { min-width: 0; }
-		.kicker { margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; }
+		.kicker { margin: 0; font-size: 11px; color: #94a3b8; }
 		.ip { margin: 2px 0 0; font-size: 15px; font-weight: 700; word-break: break-all; }
 		.place { margin: 2px 0 0; color: #cbd5e1; }
 	</style>

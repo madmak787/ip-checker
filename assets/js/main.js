@@ -122,6 +122,7 @@
     scrollWheelZoom: false,
     zoomControl: true,
   });
+  map.attributionControl.setPrefix('<a href="https://leafletjs.com" rel="noopener">Leaflet</a>');
 
   window.ipMapLayer = L.tileLayer(tileUrl(), {
     attribution: "&copy; OpenStreetMap",
@@ -168,7 +169,7 @@
       circle.setLatLng(point);
     }
 
-    map.fitBounds(circle.getBounds(), { padding: [28, 28], maxZoom: 15 });
+    map.fitBounds(circle.getLatLng().toBounds(circle.getRadius() * 2), { padding: [28, 28], maxZoom: 15 });
 
     const coords = document.getElementById("field-coordinates");
     const accuracyField = document.getElementById("field-accuracy");
@@ -232,7 +233,7 @@
   window.setTimeout(() => {
     map.invalidateSize();
     if (circle) {
-      map.fitBounds(circle.getBounds(), { padding: [24, 24], maxZoom: 14 });
+      map.fitBounds(circle.getLatLng().toBounds(circle.getRadius() * 2), { padding: [24, 24], maxZoom: 14 });
     } else if (marker) {
       map.setView(marker.getLatLng(), startZoom);
     }

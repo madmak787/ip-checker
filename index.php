@@ -116,8 +116,8 @@ if ($ok) {
 		<title>IP Checker</title>
 		<meta name="description" content="Look up location, ASN, hostname, and network hints for any IP or domain." />
 		<link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
-		<link rel="stylesheet" href="assets/css/leaflet.css"/>
-		<link rel="stylesheet" href="assets/css/app.css" />
+		<link rel="stylesheet" href="assets/css/leaflet.css?v=1.9.4"/>
+		<link rel="stylesheet" href="assets/css/app.css?v=7" />
 		<script>
 			(function () {
 				try {
@@ -165,7 +165,7 @@ if ($ok) {
 						placeholder="8.8.8.8, 2001:4860:4860::8888, or google.com"
 						value="<?php echo h($isOwnLookup ? '' : $requested); ?>"
 					/>
-					<button type="submit" class="btn btn-primary">Lookup</button>
+					<button type="submit" class="btn btn-primary">Look up</button>
 					<a href="index.php" class="btn btn-ghost">My IP</a>
 				</form>
 			</section>
@@ -188,7 +188,7 @@ if ($ok) {
 							<p class="kicker"><?php echo h($kicker); ?></p>
 							<div class="ip-row">
 								<h2 id="display-ip"><?php echo h($displayIp); ?></h2>
-								<button type="button" class="btn btn-primary btn-small copy-ip" data-copy="<?php echo h($displayIp); ?>">Copy</button>
+								<button type="button" class="btn btn-ghost btn-small copy-ip" data-copy="<?php echo h($displayIp); ?>">Copy</button>
 							</div>
 							<?php if ($hintLabel !== ''): ?>
 								<p class="hint hint-<?php echo h($hintKind); ?>"><?php echo h($hintLabel); ?></p>
@@ -211,7 +211,7 @@ if ($ok) {
 								<div class="ip-row">
 									<h2><?php echo h($clientIpv6); ?></h2>
 									<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($clientIpv6); ?>">Copy</button>
-									<a class="btn btn-primary btn-small" href="index.php?ip=<?php echo h(rawurlencode($clientIpv6)); ?>">Lookup</a>
+									<a class="btn btn-ghost btn-small" href="index.php?ip=<?php echo h(rawurlencode($clientIpv6)); ?>">Lookup</a>
 								</div>
 							</div>
 						<?php endif; ?>
@@ -220,7 +220,7 @@ if ($ok) {
 						<?php if ($showMap): ?>
 							<div id="map"></div>
 							<?php if ($isOwnLookup): ?>
-								<button type="button" id="precise-location" class="btn btn-primary btn-small map-locate">Device GPS</button>
+								<button type="button" id="precise-location" class="btn btn-ghost btn-small map-locate">Use device location</button>
 							<?php endif; ?>
 						<?php else: ?>
 							<div class="notice">No map coordinates for this address.</div>
@@ -231,7 +231,7 @@ if ($ok) {
 
 			<?php if ($ok): ?>
 			<section class="panel share">
-				<h2>Share / embed</h2>
+				<h2>Share or embed</h2>
 				<p>Copy a permalink to this lookup, or drop a compact badge on a blog.</p>
 				<div class="share-grid">
 					<div class="api-item">
@@ -239,7 +239,7 @@ if ($ok) {
 						<pre><?php echo h($shareUrl); ?></pre>
 						<div class="api-actions">
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($shareUrl); ?>">Copy link</button>
-							<a class="btn btn-primary btn-small" href="<?php echo h($shareQuery); ?>">Open</a>
+							<a class="btn btn-ghost btn-small" href="<?php echo h($shareQuery); ?>">Open</a>
 						</div>
 					</div>
 					<div class="api-item">
@@ -247,7 +247,7 @@ if ($ok) {
 						<pre><?php echo h($embedSnippet); ?></pre>
 						<div class="api-actions">
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($embedSnippet); ?>">Copy embed</button>
-							<a class="btn btn-primary btn-small" href="<?php echo h($badgeUrl); ?>" target="_blank" rel="noopener noreferrer">Preview</a>
+							<a class="btn btn-ghost btn-small" href="<?php echo h($badgeUrl); ?>" target="_blank" rel="noopener noreferrer">Preview</a>
 						</div>
 					</div>
 				</div>
@@ -265,7 +265,7 @@ if ($ok) {
 						<div class="api-actions">
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($basicApi); ?>">Copy path</button>
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($curlBasic); ?>">Copy curl</button>
-							<a class="btn btn-primary btn-small" href="<?php echo h($basicApi); ?>" target="_blank" rel="noopener noreferrer">Open JSON</a>
+							<a class="btn btn-ghost btn-small" href="<?php echo h($basicApi); ?>" target="_blank" rel="noopener noreferrer">Open JSON</a>
 						</div>
 					</div>
 					<div class="api-item">
@@ -274,7 +274,7 @@ if ($ok) {
 						<pre><?php echo h($curlHost); ?></pre>
 						<div class="api-actions">
 							<button type="button" class="btn btn-ghost btn-small" data-copy="<?php echo h($detailedApi); ?>">Copy path</button>
-							<a class="btn btn-primary btn-small" href="<?php echo h($detailedApi); ?>" target="_blank" rel="noopener noreferrer">Open JSON</a>
+							<a class="btn btn-ghost btn-small" href="<?php echo h($detailedApi); ?>" target="_blank" rel="noopener noreferrer">Open JSON</a>
 						</div>
 					</div>
 				</div>
@@ -290,7 +290,7 @@ if ($ok) {
 		</footer>
 
 		<div id="toast" class="toast" role="status">Copied</div>
-		<script src="assets/js/leaflet.js"></script>
-		<script src="assets/js/main.js?v=6" defer></script>
+		<script src="assets/js/leaflet.js?v=1.9.4"></script>
+		<script src="assets/js/main.js?v=7" defer></script>
 	</body>
 </html>
